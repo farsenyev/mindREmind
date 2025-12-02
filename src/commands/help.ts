@@ -7,7 +7,7 @@ export function registerHelpCommand(bot: Telegraf) {
 Список команд:
 /start
 /help
-/remind [time] [text]
+/remind [time в формате ГГГГ-ММ-ДД ЧЧ:ММ или 1d/h/m] [text]
 `
         );
     });
