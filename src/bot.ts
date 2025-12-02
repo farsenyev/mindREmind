@@ -2,6 +2,8 @@ import { Telegraf } from "telegraf";
 import * as dotenv from "dotenv";
 
 import { registerStartCommand } from "./commands/start";
+import { registerRemindCommand } from "./commands/remind";
+import { registerHelpCommand } from "./commands/help";
 
 dotenv.config();
 
@@ -13,6 +15,8 @@ if (!token) {
 const bot = new Telegraf(token);
 
 registerStartCommand(bot)
+registerHelpCommand(bot)
+registerRemindCommand(bot)
 
 bot.launch().then(() => {
     console.log("Reminder bot is running 🚀");
