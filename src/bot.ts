@@ -1,7 +1,7 @@
-// @ts-ignore
 import { Telegraf } from "telegraf";
-// @ts-ignore
 import * as dotenv from "dotenv";
+
+import { registerStartCommand } from "./commands/start";
 
 dotenv.config();
 
@@ -12,20 +12,10 @@ if (!token) {
 
 const bot = new Telegraf(token);
 
-bot.start((ctx) => {
-    ctx.reply(`Привет, ${ctx.from.first_name || "друг"}! Я бот на TypeScript + pnpm 🚀`)
-});
-
-bot.help((ctx) => {
-    ctx.reply("Доступные команды:\n/start — приветствие\n/help — помощь")
-})
-
-bot.on("text", (ctx) => {
-    ctx.reply(`Ты написал: ${ctx.message.text}`);
-})
+registerStartCommand(bot)
 
 bot.launch().then(() => {
-    console.log("Bot is running 🚀");
+    console.log("Reminder bot is running 🚀");
 });
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
