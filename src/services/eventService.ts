@@ -87,3 +87,18 @@ export const formatEventForMessage = (event: EventItem): string => {
         `Участники:\n${invitesStr}`
     );
 };
+
+export const getEventsForUsers = (
+    userId: number,
+    username?: string
+): EventItem[] => {
+    const all = Array.from(eventsById.values());
+
+    return all.filter((event) => {
+        const isCreator = event.creatorId === userId
+
+        const isInvited = !!username && event.invites.some((i) => i.username.toLowerCase() === username.toLowerCase());
+
+        return isCreator || isInvited;
+    });
+}
