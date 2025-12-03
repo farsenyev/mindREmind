@@ -1,6 +1,6 @@
 import { Telegraf } from "telegraf";
 import dayjs from "dayjs";
-import { sheduleReminder } from "../services/reminderService";
+import { scheduleReminder } from "../services/reminderService";
 import { parseReminder } from "../utils/parseReminder";
 
 export const registerRemindCommand = (bot: Telegraf) => {
@@ -38,7 +38,7 @@ export const registerRemindCommand = (bot: Telegraf) => {
             return;
         }
 
-        const reminder = sheduleReminder(bot, chatId, text, fireAt)
+        const reminder = scheduleReminder(bot, chatId, text, fireAt)
         if (!reminder) {
             ctx.reply("Время напоминания уже прошло или слишком близко к текущему.")
             return;

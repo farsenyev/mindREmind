@@ -27,7 +27,7 @@ export function registerEventCommand(bot: Telegraf) {
         const parsed = parseEventInput(args);
         if (!parsed) {
             ctx.reply(
-                "Не смогла понять время 😔\nПримеры:\n" +
+                "Не смог понять время 😔\nПримеры:\n" +
                 "/event 10m @user созвон\n" +
                 "/event 1d @user подготовить отчёт\n" +
                 "/event 2025-12-10 19:30 @user встреча",
