@@ -82,6 +82,16 @@ export function registerEventCommand(bot: Telegraf) {
                         },
                     },
                 );
+
+                const current = getEventById(user.id);
+                if (current) {
+                    const invite = current.invites.find(
+                        (i) => i.username.toLowerCase() === username.toLowerCase()
+                    )
+                    if (invite) {
+                        invite.userId = user.id
+                    }
+                }
             } catch (err) {
                 console.error(`Не удалось отправить личное приглашение @${username}`, err);
             }
@@ -105,12 +115,13 @@ export function registerEventCommand(bot: Telegraf) {
         const eventId = Number(idStr);
         const status = statusStr === "yes" ? "yes" : "no";
 
+        const fromId = ctx.from?.id
         const fromUsername = ctx.from?.username;
         if (!fromUsername) {
             return ctx.answerCbQuery("Мне нужен твой username, чтобы записать ответ 🙈");
         }
 
-        const updated = updateRsvp(eventId, fromUsername, status);
+        const updated = updateRsvp(eventId, fromUsername, fromId, status);
         if (!updated) {
             return ctx.answerCbQuery("Не нашла событие или тебя там нет 😅");
         }

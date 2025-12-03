@@ -48,15 +48,26 @@ export const getEventById = (eventId: number): EventItem | undefined => {
 export const updateRsvp = (
     eventId: number,
     username: string,
+    userId: number,
     status: RsvpStatus,
 ): EventItem | undefined => {
     const event = eventsById.get(eventId);
     if (!event) return;
 
-    const invite = event.invites.find(
-        (i) => i.username.toLowerCase() === username.toLowerCase(),
+    let invite = event.invites.find(
+        (i) => i.userId !== undefined && i.userId === userId,
     );
-    if (!invite) return;
+    if (!invite && username) {
+        invite = event.invites.find(
+            (i) => i.username.toLowerCase() === username.toLowerCase(),
+        );
+    }
+
+    if (!invite) return
+
+    if (!invite.userId) {
+        invite.userId = userId
+    }
 
     invite.status = status;
     return event;

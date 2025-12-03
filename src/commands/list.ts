@@ -14,9 +14,8 @@ export const registerListCommand = (bot: Telegraf) => {
         const username = ctx.from.username
         const chatId = ctx.chat.id
 
-        const events = getEventsForUsers(userId, username);
-
         const now = Date.now();
+        const events = getEventsForUsers(userId, username).filter((r) => r.fireAt.getTime() > now);
         const reminders = getRemindersForChat(chatId).filter((r) => r.fireAt.getTime() > now);
 
         let parts: string[] = []

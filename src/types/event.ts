@@ -2,6 +2,7 @@ export type RsvpStatus = "yes" | "no";
 
 export type EventInvite = {
     username: string;
+    userId?: number;
     status: RsvpStatus | "pending"
 }
 
