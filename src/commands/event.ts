@@ -1,17 +1,15 @@
-// src/commands/event.ts
 import { Telegraf } from "telegraf";
 import { Markup } from "telegraf";
 import { parseEventInput } from "../utils/parserEventInput";
 import {
     createEvent,
-    formatEventForMessage,
+    formatEventForMessage, getEventById,
     updateRsvp,
 } from "../services/eventService";
 import { getUserByUsername } from "../services/userService";
 import { EventItem } from "../types/event";
 
 export function registerEventCommand(bot: Telegraf) {
-    // /event <time> [@user1 @user2] <title>
     bot.command("event", async (ctx) => {
         const messageText = ctx.message?.text || "";
         const args = messageText.replace(/^\/event(@\w+)?\s*/i, "");
@@ -44,7 +42,6 @@ export function registerEventCommand(bot: Telegraf) {
             return;
         }
 
-        // создаём событие
         const event = createEvent(
             chatId,
             creatorId,
@@ -55,39 +52,12 @@ export function registerEventCommand(bot: Telegraf) {
 
         const text = formatEventForMessage(event);
 
-        // клавиатура для RSVP
-        const keyboard =
-            parsed.usernames.length > 0
-                ? Markup.inlineKeyboard([
-                    [
-                        Markup.button.callback(
-                            "✅ Приду",
-                            `event_rsvp:${event.id}:yes`,
-                        ),
-                        Markup.button.callback(
-                            "❌ Не смогу",
-                            `event_rsvp:${event.id}:no`,
-                        ),
-                    ],
-                ])
-                : undefined;
+        const creatorMessage = await ctx.reply(text)
+        event.creatorMessageId = creatorMessage.message_id;
 
-        const mentionPart =
-            parsed.usernames.length > 0
-                ? parsed.usernames.map((u) => `@${u}`).join(" ") + "\n\n"
-                : "";
-
-        // 1) Сообщение в чат, где создаётся событие
-        if (keyboard) {
-            await ctx.reply(mentionPart + text, keyboard);
-        } else {
-            await ctx.reply(mentionPart + text);
-        }
-
-        // 2) Личные приглашения сразу при создании
         for (const username of parsed.usernames) {
             const user = getUserByUsername(username);
-            if (!user) continue; // этот пользователь ещё не нажимал /start в личке
+            if (!user) continue;
 
             try {
                 await ctx.telegram.sendMessage(
@@ -117,18 +87,16 @@ export function registerEventCommand(bot: Telegraf) {
             }
         }
 
-        // 3) Планируем уведомление по времени события
-        scheduleEventNotification(bot, event);
+        scheduleEventNotification(bot, event.id);
     });
 
-    // обработка нажатий на кнопки RSVP
     bot.on("callback_query", async (ctx) => {
         const cq = ctx.callbackQuery;
         if (!("data" in cq) || typeof cq.data !== "string") {
             return ctx.answerCbQuery();
         }
 
-        const data = cq.data; // "event_rsvp:2:yes"
+        const data = cq.data;
         if (!data.startsWith("event_rsvp:")) {
             return ctx.answerCbQuery();
         }
@@ -149,47 +117,47 @@ export function registerEventCommand(bot: Telegraf) {
 
         const newText = formatEventForMessage(updated);
 
-        // обновляем именно то сообщение, в котором человек нажал кнопку
-        await ctx.editMessageText(newText, {
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        {
-                            text: "✅ Приду",
-                            callback_data: `event_rsvp:${updated.id}:yes`,
-                        },
-                        {
-                            text: "❌ Не смогу",
-                            callback_data: `event_rsvp:${updated.id}:no`,
-                        },
-                    ],
-                ],
-            },
-        });
+        await ctx.editMessageText(newText);
+
+        if (updated.creatorMessageId) {
+            try {
+                await bot.telegram.editMessageText(
+                    updated.chatId,
+                    updated.creatorMessageId,
+                    undefined,
+                    newText
+                );
+            } catch (err) {
+                console.error("Не удалось обновить сообщение создателя события", err);
+            }
+        }
 
         await ctx.answerCbQuery("Ответ записан 👍");
     });
 }
 
-// локальный планировщик уведомления по событию
-function scheduleEventNotification(bot: Telegraf, event: EventItem): void {
+function scheduleEventNotification(bot: Telegraf, eventId: number): void {
+    const event=getEventById(eventId)
+    if (!event) return
+
     const delay = event.fireAt.getTime() - Date.now();
     if (delay <= 0) return;
 
     setTimeout(async () => {
+        const current = getEventById(eventId);
+        if (!current) return;
         const text = `🔔 Наступило время события!\n\n${formatEventForMessage(event)}`;
 
         try {
-            // уведомление в чат, где создали событие
-            await bot.telegram.sendMessage(event.chatId, text);
+            await bot.telegram.sendMessage(current.chatId, text);
         } catch (err) {
             console.error("Ошибка при отправке уведомления в чат:", err);
         }
 
-        // уведомления в личку всем приглашённым, кто известен
-        for (const invite of event.invites) {
+        for (const invite of current.invites) {
             const user = getUserByUsername(invite.username);
             if (!user) continue;
+            if (invite.status !== "yes") continue;
 
             try {
                 await bot.telegram.sendMessage(

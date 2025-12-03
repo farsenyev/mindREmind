@@ -12,4 +12,5 @@ export type EventItem = {
     title: string;
     fireAt: Date;
     invites: EventInvite[];
+    creatorMessageId?: number;
 }
