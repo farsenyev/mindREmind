@@ -3,11 +3,11 @@ import { parseEventInput } from "../utils/parserEventInput";
 import {
     createEvent,
     formatEventForMessage, getEventById,
-    updateRsvp,
     deleteEvent
 } from "../services/eventService";
 import { getUserByUsername } from "../services/userService";
 import {parseReminder} from "../utils/parseReminder";
+import {scheduleEventNotification} from "../services/eventScheduler";
 
 export async function handleEventCreateFromArgs(bot: Telegraf, ctx: Context, args: string) {
     if (!args.trim()) {
@@ -88,7 +88,7 @@ export async function handleEventCreateFromArgs(bot: Telegraf, ctx: Context, arg
             try {
                 await ctx.telegram.sendMessage(
                     ctx.from.id,
-                    `👋 Привет, ${ctx.from.first_name || "друг"}!\nТы создала событие:\n\n${text}`,
+                    `👋 Привет, ${ctx.from.first_name || "друг"}!\nТы создал событие:\n\n${text}`,
                     rsvpKeyboard
                 );
             } catch (err) {
@@ -101,6 +101,7 @@ export async function handleEventCreateFromArgs(bot: Telegraf, ctx: Context, arg
 
     for (const invite of event.invites) {
         const username = invite.username;
+
         const u = getUserByUsername(username);
         if (!u) continue;
 
@@ -303,49 +304,4 @@ export function registerEventCommand(bot: Telegraf) {
             `Новое время и описание:\n\n${newText}`,
         );
     })
-}
-
-function scheduleEventNotification(bot: Telegraf, eventId: number): void {
-    const event=getEventById(eventId)
-    if (!event) return
-
-    const delay = event.fireAt.getTime() - Date.now();
-    if (delay <= 0) return;
-
-    if (event.notificationTimeout) {
-        clearTimeout(event.notificationTimeout);
-    }
-
-    const timeout = setTimeout(async () => {
-        const current = getEventById(eventId);
-        if (!current) return;
-
-        const text = `🔔 Наступило время события!\n\n${formatEventForMessage(event)}`;
-
-        try {
-            await bot.telegram.sendMessage(current.chatId, text);
-        } catch (err) {
-            console.error("Ошибка при отправке уведомления в чат:", err);
-        }
-
-        for (const invite of current.invites) {
-            const user = getUserByUsername(invite.username);
-            if (!user) continue;
-            if (invite.status !== "yes") continue;
-
-            try {
-                await bot.telegram.sendMessage(
-                    user.id,
-                    `🔔 Напоминание о событии:\n\n${formatEventForMessage(event)}`,
-                );
-            } catch (err) {
-                console.error(
-                    `Ошибка при отправке личного напоминания @${invite.username}`,
-                    err,
-                );
-            }
-        }
-    }, delay);
-
-    event.notificationTimeout = timeout
 }

@@ -1,12 +1,12 @@
 import {Markup, Telegraf} from "telegraf";
 import * as dotenv from "dotenv";
 
-import { registerStartCommand } from "./commands/start";
-import {handleRemindWizardInput, registerRemindCommand} from "./commands/remind";
+import { handleRemindWizardInput, registerRemindCommand } from "./commands/remind";
 import { registerHelpCommand } from "./commands/help";
-import {handleEventWizardInput, registerEventCommand} from "./commands/event";
+import { handleEventWizardInput, registerEventCommand } from "./commands/event";
 import { handleList, registerListCommand } from "./commands/list";
-import {registerCallbackQueryHandler} from "./handlers/callBackQuery";
+import { registerCallbackQueryHandler } from "./handlers/callBackQuery";
+import { registerUser } from "./services/userService";
 
 type PendingAction = | {type: "remind"} | {type: "event"}
 
@@ -26,6 +26,9 @@ const mainMenu = Markup.keyboard([
 ]).resize()
 
 bot.start((ctx) => {
+    if (ctx.from) {
+        registerUser(ctx.from.id, ctx.from.username, ctx.from.first_name);
+    }
     ctx.reply("Привет! Я бот-напоминалка 👋 "+ "\nЧто хочешь сделать?", mainMenu)
 });
 
@@ -61,11 +64,9 @@ bot.hears("📋 Список", (ctx) => {
     return handleList(ctx)
 });
 
-registerStartCommand(bot)
 registerHelpCommand(bot)
 registerRemindCommand(bot)
 registerEventCommand(bot)
-registerListCommand(bot)
 registerListCommand(bot)
 registerCallbackQueryHandler(bot)
 

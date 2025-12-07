@@ -114,8 +114,7 @@ src/
 │   ├── remind.ts         — команда /remind
 │   ├── event.ts          — команда /event
 │   ├──  list.ts           — команда /list
-│   ├──  help.ts           — команда /help
-│   └── start.ts           — команда /start
+│   └──  help.ts           — команда /help
 │
 ├── handlers/
 │   └── callbackQuery.ts  — единый обработчик всех инлайн-кнопок
