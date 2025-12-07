@@ -37,6 +37,19 @@ export const createEvent = (
     return event;
 };
 
+export const deleteEvent= (eventId: number): EventItem | undefined => {
+    const event = eventsById.get(eventId);
+    if (!event) return
+
+    eventsById.delete(eventId);
+
+    const list = eventsByChat.get(event.chatId) || [];
+    const filtered =list.filter((e) => e.id !== eventId);
+    eventsByChat.set(event.chatId, filtered);
+
+    return event;
+}
+
 export const getEventsForChat = (chatId: number): EventItem[] => {
     return eventsByChat.get(chatId) || [];
 };

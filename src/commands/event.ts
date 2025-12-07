@@ -5,6 +5,7 @@ import {
     createEvent,
     formatEventForMessage, getEventById,
     updateRsvp,
+    deleteEvent
 } from "../services/eventService";
 import { getUserByUsername } from "../services/userService";
 import { EventItem } from "../types/event";
@@ -99,6 +100,69 @@ export function registerEventCommand(bot: Telegraf) {
 
         scheduleEventNotification(bot, event.id);
     });
+
+    bot.command("delete", async (ctx) => {
+        const text = ctx.message?.text || "";
+        const args = text.replace(/^\/delete(@\w+)?\s*/i, "").trim();
+
+        if (!args) {
+            ctx.reply("Формат: /delete [id]\nНапример: /delete 3");
+            return;
+        }
+        const eventId = Number(args[0]);
+        if (!Number.isFinite(eventId)) {
+            ctx.reply("ID события должен быть числом. Пример: /cancel 3");
+            return;
+        }
+
+        const current = getEventById(eventId);
+        if (!current) {
+            ctx.reply(`Событие ${eventId} не найдено`)
+            return;
+        }
+
+        if (!ctx.from || ctx.from.id !== current.creatorId) {
+            ctx.reply("Только создатель события может его отменить 🙈");
+            return;
+        }
+
+        const deleted = deleteEvent(eventId);
+        if (!deleted) {
+            ctx.reply("Не удалось отменить событие, попробуй ещё раз.");
+            return;
+        }
+
+        await ctx.reply(`❌ Событие #${deleted.id} "${deleted.title}" отменено.`)
+
+        if (deleted.creatorId !== current.creatorId) {
+            try{
+                await ctx.telegram.editMessageText(
+                    deleted.chatId,
+                    deleted.creatorId,
+                    undefined,
+                    `❌ Событие #${deleted.id} отменено.\n\n${formatEventForMessage(deleted)}`
+                )
+            } catch (error) {
+                console.error( "Не удалось обновить сообщение создателя после отмены события", error);
+            }
+        }
+
+        for (const invite of deleted.invites) {
+            if (!invite.userId) continue;
+
+            try {
+                await bot.telegram.sendMessage(
+                    invite.userId,
+                    `❌ Событие #${deleted.id} "${deleted.title}" было отменено создателем.`
+                )
+            } catch (err) {
+                console.error(
+                    `Не удалось отправить уведомление об отмене @${invite.username}`,
+                    err
+                );
+            }
+        }
+    })
 
     bot.on("callback_query", async (ctx) => {
         const cq = ctx.callbackQuery;
