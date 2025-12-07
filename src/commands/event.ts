@@ -50,14 +50,75 @@ export function registerEventCommand(bot: Telegraf) {
             parsed.usernames,
         );
 
+        if (ctx.from) {
+            const creatorUsername = ctx.from.username || `id${ctx.from.id}`;
+
+            const alreadyInInvites = event.invites.some(
+                (i) => i.username.toLowerCase() === creatorUsername.toLowerCase()
+            );
+
+            if (!alreadyInInvites) {
+                event.invites.unshift({
+                    username: creatorUsername,
+                    userId: ctx.from.id,
+                    status: "pending",
+                });
+            }
+        }
+
         const text = formatEventForMessage(event);
 
-        const creatorMessage = await ctx.reply(text)
+        const rsvpKeyboard = {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        {
+                            text: "✅ Приду",
+                            callback_data: `event_rsvp:${event.id}:yes`,
+                        },
+                        {
+                            text: "❌ Не смогу",
+                            callback_data: `event_rsvp:${event.id}:no`,
+                        },
+                    ],
+                ],
+            },
+        };
+
+        const isPrivate = ctx.chat?.type === "private";
+
+        let creatorMessage;
+        if (isPrivate) {
+            creatorMessage = await ctx.reply(text, rsvpKeyboard);
+        } else {
+            creatorMessage = await ctx.reply(text);
+
+            if (ctx.from) {
+                try {
+                    await ctx.telegram.sendMessage(
+                        ctx.from.id,
+                        `👋 Привет, ${ctx.from.first_name || "друг"}!\n` +
+                        `Ты создала событие:\n\n` +
+                        text,
+                        rsvpKeyboard,
+                    );
+                } catch (err) {
+                    console.error("Не удалось отправить личное приглашение создателю", err);
+                }
+            }
+        }
+
         event.creatorMessageId = creatorMessage.message_id;
 
-        for (const username of parsed.usernames) {
+        for (const invite of event.invites) {
+            const username = invite.username;
             const user = getUserByUsername(username);
             if (!user) continue;
+
+            if (ctx.from && user.id === ctx.from.id) {
+                invite.userId = user.id;
+                continue;
+            }
 
             try {
                 await ctx.telegram.sendMessage(
@@ -65,33 +126,10 @@ export function registerEventCommand(bot: Telegraf) {
                     `👋 Привет, ${user.firstName || username}!\n` +
                     `Тебя пригласили на событие:\n\n` +
                     text,
-                    {
-                        reply_markup: {
-                            inline_keyboard: [
-                                [
-                                    {
-                                        text: "✅ Приду",
-                                        callback_data: `event_rsvp:${event.id}:yes`,
-                                    },
-                                    {
-                                        text: "❌ Не смогу",
-                                        callback_data: `event_rsvp:${event.id}:no`,
-                                    },
-                                ],
-                            ],
-                        },
-                    },
+                    rsvpKeyboard,
                 );
 
-                const current = getEventById(user.id);
-                if (current) {
-                    const invite = current.invites.find(
-                        (i) => i.username.toLowerCase() === username.toLowerCase()
-                    )
-                    if (invite) {
-                        invite.userId = user.id
-                    }
-                }
+                invite.userId = user.id;
             } catch (err) {
                 console.error(`Не удалось отправить личное приглашение @${username}`, err);
             }
@@ -278,6 +316,7 @@ export function registerEventCommand(bot: Telegraf) {
 
         const fromId = ctx.from?.id
         const fromUsername = ctx.from?.username;
+
         if (!fromUsername) {
             return ctx.answerCbQuery("Мне нужен твой username, чтобы записать ответ 🙈");
         }
@@ -292,12 +331,38 @@ export function registerEventCommand(bot: Telegraf) {
         await ctx.editMessageText(newText);
 
         if (updated.creatorMessageId) {
+            const creatorInvite = updated.invites.find(
+                (i) => i.userId === updated.creatorId
+            );
+
+            let creatorReplyMarkup: { reply_markup: { inline_keyboard: any[][] } } | undefined;
+
+            if (creatorInvite && creatorInvite.status === "pending") {
+                creatorReplyMarkup = {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                {
+                                    text: "✅ Приду",
+                                    callback_data: `event_rsvp:${updated.id}:yes`,
+                                },
+                                {
+                                    text: "❌ Не смогу",
+                                    callback_data: `event_rsvp:${updated.id}:no`,
+                                },
+                            ],
+                        ],
+                    },
+                };
+            }
+
             try {
                 await bot.telegram.editMessageText(
                     updated.chatId,
                     updated.creatorMessageId,
                     undefined,
-                    newText
+                    newText,
+                    creatorReplyMarkup,
                 );
             } catch (err) {
                 console.error("Не удалось обновить сообщение создателя события", err);

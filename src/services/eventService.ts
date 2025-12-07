@@ -76,13 +76,20 @@ export const updateRsvp = (
         );
     }
 
-    if (!invite) return
+    if (!invite) {
+        if (!username) return
+        invite = {
+            username,
+            userId,
+            status
+        };
 
-    if (!invite.userId) {
-        invite.userId = userId
+        event.invites.push(invite);
+    } else {
+        invite.status = status;
+        if (!invite.userId) invite.userId = userId;
     }
 
-    invite.status = status;
     return event;
 };
 
