@@ -94,7 +94,7 @@ export const updateRsvp = (
 };
 
 export const formatEventForMessage = (event: EventItem): string => {
-    const dateStr = dayjs(event.fireAt).format("YYYY-MM-DD HH:mm");
+    const dateStr = dayjs(event.fireAt).tz().format("YYYY-MM-DD HH:mm");
 
     const invitesStr =
         event.invites.length === 0

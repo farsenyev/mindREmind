@@ -7,12 +7,20 @@ import { handleEventWizardInput, registerEventCommand } from "./commands/event";
 import { handleList, registerListCommand } from "./commands/list";
 import { registerCallbackQueryHandler } from "./handlers/callBackQuery";
 import { registerUser } from "./services/userService";
+import dayjs from "dayjs";
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
 
 type PendingAction = | {type: "remind"} | {type: "event"}
 
 const pendingByUser = new Map<number, PendingAction>()
 
 dotenv.config();
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+dayjs.tz.setDefault("Europe/Moscow");
+
 
 const token = process.env.BOT_TOKEN;
 if (!token) {
