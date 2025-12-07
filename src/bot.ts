@@ -2,10 +2,14 @@ import {Markup, Telegraf} from "telegraf";
 import * as dotenv from "dotenv";
 
 import { registerStartCommand } from "./commands/start";
-import { registerRemindCommand } from "./commands/remind";
+import {handleRemindWizardInput, registerRemindCommand} from "./commands/remind";
 import { registerHelpCommand } from "./commands/help";
-import { registerEventCommand } from "./commands/event";
-import {handleList, registerListCommand} from "./commands/list";
+import {handleEventWizardInput, registerEventCommand} from "./commands/event";
+import { handleList, registerListCommand } from "./commands/list";
+
+type PendingAction = | {type: "remind"} | {type: "event"}
+
+const pendingByUser = new Map<number, PendingAction>()
 
 dotenv.config();
 
@@ -23,7 +27,11 @@ const mainMenu = Markup.keyboard([
 bot.start((ctx) => {
     ctx.reply("Привет! Я бот-напоминалка 👋 "+ "\nЧто хочешь сделать?", mainMenu)
 });
+
 bot.hears("➕ Напоминание", (ctx) => {
+    if (!ctx.from) return;
+    pendingByUser.set(ctx.from.id, { type: "remind" });
+
     return ctx.reply(
         "Создаём напоминание ⏰\n" +
         "Напиши команду в формате:\n" +
@@ -35,6 +43,9 @@ bot.hears("➕ Напоминание", (ctx) => {
 });
 
 bot.hears("📅 Событие", (ctx) => {
+    if (!ctx.from) return;
+    pendingByUser.set(ctx.from.id, { type: "event" });
+
     return ctx.reply(
         "Создаём событие 📅\n" +
         "Напиши команду в формате:\n" +
@@ -54,6 +65,37 @@ registerHelpCommand(bot)
 registerRemindCommand(bot)
 registerEventCommand(bot)
 registerListCommand(bot)
+
+bot.on("text", async (ctx, next) => {
+    const text = ctx.message?.text || "";
+    const userId = ctx.from?.id;
+
+    if (text.startsWith("/")) {
+        return next();
+    }
+
+    if (!userId) {
+        return next();
+    }
+
+    const pending = pendingByUser.get(userId);
+    if (!pending) {
+        return next();
+    }
+
+    if (pending.type === "remind") {
+        await handleRemindWizardInput(bot, ctx, text);
+        pendingByUser.delete(userId);
+        return
+    }
+    if (pending.type === "event") {
+        await handleEventWizardInput(bot, ctx, text);
+        pendingByUser.delete(userId);
+        return
+    }
+
+    return next()
+})
 
 bot.launch().then(() => {
     console.log("Reminder bot is running 🚀");

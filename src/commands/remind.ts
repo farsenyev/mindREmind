@@ -1,7 +1,39 @@
-import { Telegraf } from "telegraf";
+import {Context, Telegraf} from "telegraf";
 import dayjs from "dayjs";
 import { scheduleReminder } from "../services/reminderService";
 import { parseReminder } from "../utils/parseReminder";
+
+export async function handleRemindWizardInput(bot: Telegraf, ctx: Context, raw: string) {
+    if (!ctx.chat || !ctx.from) {
+        await ctx.reply("Не могу определить чат или пользователя 🤔");
+        return;
+    }
+
+    const parsed = parseReminder(raw);
+    if (!parsed) {
+        await ctx.reply(
+            "Не смогла понять время 😔\n" +
+            "Примеры:\n" +
+            "`15m купить хлеб`\n" +
+            "`2h созвон с коллегой`\n" +
+            "`2025-12-10 19:30 важный звонок`",
+            { parse_mode: "Markdown" },
+        );
+        return;
+    }
+
+    const { fireAt, text } = parsed;
+    const chatId = ctx.chat?.id
+
+    const reminder = scheduleReminder(bot, chatId, text, fireAt)
+    if (!reminder) {
+        ctx.reply("Время напоминания уже прошло или слишком близко к текущему.")
+        return;
+    }
+
+    const whenStr = dayjs(fireAt).format("YYYY-MM-DD HH:mm")
+    ctx.reply(`Окей, напомню 📅 ${whenStr}\nТекст: "${text}"`)
+}
 
 export const registerRemindCommand = (bot: Telegraf) => {
     bot.command("remind", (ctx) => {

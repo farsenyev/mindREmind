@@ -1,4 +1,4 @@
-import { Telegraf } from "telegraf";
+import { Context, Telegraf } from "telegraf";
 import { parseEventInput } from "../utils/parserEventInput";
 import {
     createEvent,
@@ -9,133 +9,135 @@ import {
 import { getUserByUsername } from "../services/userService";
 import {parseReminder} from "../utils/parseReminder";
 
+export async function handleEventCreateFromArgs(bot: Telegraf, ctx: Context, args: string) {
+    if (!args.trim()) {
+        await ctx.reply(
+            "Формат:\n" +
+            "/event 10m @user созвон\n" +
+            "/event 2h @user1 @user2 встреча\n" +
+            "/event 2025-12-10 19:30 @user встреча"
+        );
+        return;
+    }
+
+    const parsed = parseEventInput(args);
+    if (!parsed) {
+        await ctx.reply(
+            "Не смогла понять время 😔\nПримеры:\n" +
+            "/event 10m @user созвон\n" +
+            "/event 1d @user подготовить отчёт\n" +
+            "/event 2025-12-10 19:30 @user встреча"
+        );
+        return;
+    }
+
+    const chatId = ctx.chat?.id;
+    const creatorId = ctx.from?.id;
+
+    if (!chatId || !creatorId) {
+        await ctx.reply("Не могу определить чат или пользователя 🤔");
+        return;
+    }
+
+    const event = createEvent(
+        chatId,
+        creatorId,
+        parsed.fireAt,
+        parsed.title,
+        parsed.usernames
+    );
+
+    if (ctx.from) {
+        const creatorUsername = ctx.from.username || `id${ctx.from.id}`;
+
+        const already = event.invites.some(
+            (i) => i.username.toLowerCase() === creatorUsername.toLowerCase()
+        );
+
+        if (!already) {
+            event.invites.unshift({
+                username: creatorUsername,
+                userId: ctx.from.id,
+                status: "pending",
+            });
+        }
+    }
+
+    const text = formatEventForMessage(event);
+
+    const rsvpKeyboard = {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    {text: "✅ Приду", callback_data: `event_rsvp:${event.id}:yes`},
+                    {text: "❌ Не смогу", callback_data: `event_rsvp:${event.id}:no`},
+                ],
+            ],
+        },
+    };
+
+    let creatorMessage;
+    const isPrivate = ctx.chat?.type === "private";
+
+    if (isPrivate) {
+        creatorMessage = await ctx.reply(text, rsvpKeyboard);
+    } else {
+        creatorMessage = await ctx.reply(text);
+
+        if (ctx.from) {
+            try {
+                await ctx.telegram.sendMessage(
+                    ctx.from.id,
+                    `👋 Привет, ${ctx.from.first_name || "друг"}!\nТы создала событие:\n\n${text}`,
+                    rsvpKeyboard
+                );
+            } catch (err) {
+                console.error("Не удалось отправить приглашение создателю", err);
+            }
+        }
+    }
+
+    event.creatorMessageId = creatorMessage?.message_id;
+
+    for (const invite of event.invites) {
+        const username = invite.username;
+        const u = getUserByUsername(username);
+        if (!u) continue;
+
+        if (ctx.from && u.id === ctx.from.id) {
+            invite.userId = u.id;
+            continue;
+        }
+
+        try {
+            await ctx.telegram.sendMessage(
+                u.id,
+                `👋 Привет, ${u.firstName || username}!\nТебя пригласили на событие:\n\n${text}`,
+                rsvpKeyboard
+            );
+            invite.userId = u.id;
+        } catch (err) {
+            console.error(`Не удалось отправить сообщение @${username}`, err);
+        }
+    }
+
+    scheduleEventNotification(bot, event.id);
+}
+
+export async function handleEventWizardInput(
+    bot: Telegraf,
+    ctx: Context,
+    raw: string
+) {
+    await handleEventCreateFromArgs(bot, ctx, raw);
+}
+
 export function registerEventCommand(bot: Telegraf) {
     bot.command("event", async (ctx) => {
         const messageText = ctx.message?.text || "";
         const args = messageText.replace(/^\/event(@\w+)?\s*/i, "");
 
-        if (!args) {
-            ctx.reply(
-                "Формат:\n" +
-                "/event 10m @user созвон\n" +
-                "/event 2h @user1 @user2 встреча\n" +
-                "/event 2025-12-10 19:30 @user встреча",
-            );
-            return;
-        }
-
-        const parsed = parseEventInput(args);
-        if (!parsed) {
-            ctx.reply(
-                "Не смог понять время 😔\nПримеры:\n" +
-                "/event 10m @user созвон\n" +
-                "/event 1d @user подготовить отчёт\n" +
-                "/event 2025-12-10 19:30 @user встреча",
-            );
-            return;
-        }
-
-        const chatId = ctx.chat?.id;
-        const creatorId = ctx.from?.id;
-        if (!chatId || !creatorId) {
-            ctx.reply("Не могу определить чат или пользователя 🤔");
-            return;
-        }
-
-        const event = createEvent(
-            chatId,
-            creatorId,
-            parsed.fireAt,
-            parsed.title,
-            parsed.usernames,
-        );
-
-        if (ctx.from) {
-            const creatorUsername = ctx.from.username || `id${ctx.from.id}`;
-
-            const alreadyInInvites = event.invites.some(
-                (i) => i.username.toLowerCase() === creatorUsername.toLowerCase()
-            );
-
-            if (!alreadyInInvites) {
-                event.invites.unshift({
-                    username: creatorUsername,
-                    userId: ctx.from.id,
-                    status: "pending",
-                });
-            }
-        }
-
-        const text = formatEventForMessage(event);
-
-        const rsvpKeyboard = {
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        {
-                            text: "✅ Приду",
-                            callback_data: `event_rsvp:${event.id}:yes`,
-                        },
-                        {
-                            text: "❌ Не смогу",
-                            callback_data: `event_rsvp:${event.id}:no`,
-                        },
-                    ],
-                ],
-            },
-        };
-
-        const isPrivate = ctx.chat?.type === "private";
-
-        let creatorMessage;
-        if (isPrivate) {
-            creatorMessage = await ctx.reply(text, rsvpKeyboard);
-        } else {
-            creatorMessage = await ctx.reply(text);
-
-            if (ctx.from) {
-                try {
-                    await ctx.telegram.sendMessage(
-                        ctx.from.id,
-                        `👋 Привет, ${ctx.from.first_name || "друг"}!\n` +
-                        `Ты создала событие:\n\n` +
-                        text,
-                        rsvpKeyboard,
-                    );
-                } catch (err) {
-                    console.error("Не удалось отправить личное приглашение создателю", err);
-                }
-            }
-        }
-
-        event.creatorMessageId = creatorMessage.message_id;
-
-        for (const invite of event.invites) {
-            const username = invite.username;
-            const user = getUserByUsername(username);
-            if (!user) continue;
-
-            if (ctx.from && user.id === ctx.from.id) {
-                invite.userId = user.id;
-                continue;
-            }
-
-            try {
-                await ctx.telegram.sendMessage(
-                    user.id,
-                    `👋 Привет, ${user.firstName || username}!\n` +
-                    `Тебя пригласили на событие:\n\n` +
-                    text,
-                    rsvpKeyboard,
-                );
-
-                invite.userId = user.id;
-            } catch (err) {
-                console.error(`Не удалось отправить личное приглашение @${username}`, err);
-            }
-        }
-
-        scheduleEventNotification(bot, event.id);
+        await handleEventCreateFromArgs(bot, ctx, args);
     });
 
     bot.command("delete", async (ctx) => {
