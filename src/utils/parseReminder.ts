@@ -1,35 +1,57 @@
 import dayjs from "dayjs";
 
-export const parseReminder = (input: string): {fireAt: Date, text: string} | null => {
+export type ParsedReminderInput = {
+    fireAt: Date,
+    text: string;
+}
+
+export const parseReminder = (input: string): ParsedReminderInput | null => {
     const trimmed = input.trim()
     if (!trimmed) return null;
 
-    const relativeMatches = trimmed.match(/^(\d+)([mhd])\s+(.+)/i);
-    if (relativeMatches) {
-        // @ts-ignore
-        const amount = parseInt(relativeMatches[1], 10);
-        const unit = relativeMatches[2];
-        const text = relativeMatches[3];
+    const relMatch = /^(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|week|weeks)\s+(.+)$/i.exec(
+        trimmed,
+    );
+    if (relMatch) {
+        const amount = Number(relMatch[1]);
+        const unitRaw = relMatch[2]?.toLowerCase();
+        const text = relMatch[3]?.toString();
 
-        let fireMoment = dayjs();
-        if (unit === "m") fireMoment = fireMoment.add(amount, "minute");
-        if (unit === "h") fireMoment = fireMoment.add(amount, "hour");
-        if (unit === "d") fireMoment = fireMoment.add(amount, "day");
+        if (!unitRaw || !text) return null
 
-        // @ts-ignore
-        return {fireAt: fireMoment.toDate(), text};
+        if (!Number.isFinite(amount) || !text) return null;
+
+        let unit: dayjs.ManipulateType;
+        if (unitRaw.startsWith("s")) unit = "second";
+        else if (unitRaw.startsWith("m")) unit = "minute";
+        else if (unitRaw.startsWith("h")) unit = "hour";
+        else if (unitRaw.startsWith("d")) unit = "day";
+        else unit = "week";
+
+        const fireAt = dayjs().add(amount, unit);
+        if (!fireAt.isValid()) return null;
+
+        return {
+            fireAt: fireAt.toDate(),
+            text
+        };
     }
 
-    const absMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+(.+)/);
+    const absMatch = /^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s+(.+)$/.exec(trimmed);
     if (absMatch) {
-        const dateTimeStr = absMatch[1];
-        const text = absMatch[2];
+        const datePart = absMatch[1];
+        const timePart = absMatch[2];
+        const text = absMatch[3];
 
-        const fireMoment = dayjs(dateTimeStr, "YYYY-MM-DD HH:mm");
-        if (!fireMoment.isValid()) return null;
+        const fireAt = dayjs(`${datePart} ${timePart}`, "YYYY-MM-DD HH:mm");
+        if (!fireAt.isValid()) return null;
 
-        // @ts-ignore
-        return { fireAt: fireMoment.toDate(), text };
+        if (!text) return null;
+
+        return {
+            fireAt: fireAt.toDate(),
+            text
+        };
     }
 
     return null;

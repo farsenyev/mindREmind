@@ -1,5 +1,4 @@
 import { Telegraf } from "telegraf";
-import { Markup } from "telegraf";
 import { parseEventInput } from "../utils/parserEventInput";
 import {
     createEvent,
@@ -8,7 +7,7 @@ import {
     deleteEvent
 } from "../services/eventService";
 import { getUserByUsername } from "../services/userService";
-import { EventItem } from "../types/event";
+import {parseReminder} from "../utils/parseReminder";
 
 export function registerEventCommand(bot: Telegraf) {
     bot.command("event", async (ctx) => {
@@ -164,6 +163,104 @@ export function registerEventCommand(bot: Telegraf) {
         }
     })
 
+    bot.command("edit", async (ctx) => {
+        const text = ctx.message?.text || "";
+        const args = text.replace(/^\/edit(@\w+)?\s*/i, "").trim();
+
+        if (!args) {
+            ctx.reply(
+                "Формат:\n" +
+                "/edit [id] [время] [новый текст]\n" +
+                "Например:\n" +
+                "/edit 3 2h перенесли созвон\n" +
+                "/edit 3 2025-12-10 19:30 встреча у Евы",
+            );
+            return;
+        }
+
+        const [idPart, ...restPart] = args.split(/\s+/);
+        const eventId = Number(idPart);
+        const rest = restPart.join(" ");
+        console.log(`restParts: ${restPart}, args: ${args}, rest: ${rest}`);
+
+        if (!Number.isFinite(eventId) || restPart.length === 0) {
+            ctx.reply(
+                "Формат:\n" +
+                "/edit [id] [время] [новый текст]\n" +
+                "Например:\n" +
+                "/edit 3 30m скорректировали время",
+            );
+            return;
+        }
+
+        const event = getEventById(eventId);
+        if (!event) {
+            ctx.reply(`Событие #${eventId} не найдено.`);
+            return;
+        }
+
+        if (!ctx.from || ctx.from.id !== event.creatorId) {
+            ctx.reply("Только создатель события может его редактировать 🙈");
+            return;
+        }
+
+        const parsed = parseReminder(rest)
+        if (!parsed) {
+            ctx.reply(
+                "Не смогла понять новое время 😔\n" +
+                "Примеры:\n" +
+                "/edit 3 15m перенесли чуть-чуть\n" +
+                "/edit 3 2025-12-10 19:30 новая дата и время",
+            );
+            return;
+        }
+
+        event.fireAt = parsed.fireAt;
+        event.title = parsed.text;
+
+        scheduleEventNotification(bot, event.id)
+
+        const newText = formatEventForMessage(event)
+
+        if (event.creatorMessageId) {
+            try {
+                await bot.telegram.editMessageText(
+                    event.chatId,
+                    event.creatorMessageId,
+                    undefined,
+                    newText,
+                );
+            } catch (err) {
+                console.error(
+                    "Не удалось обновить сообщение создателя после редактирования события",
+                    err,
+                );
+            }
+        }
+
+        for (const invite of event.invites) {
+            if (!invite.userId) continue;
+
+            try {
+                await bot.telegram.sendMessage(
+                    invite.userId,
+                    `✏️ Событие #${event.id} было изменено создателем.\n\n` +
+                    newText,
+                );
+            } catch (err) {
+                console.error(
+                    `Не удалось отправить уведомление об изменении @${invite.username}`,
+                    err,
+                );
+            }
+        }
+
+        await ctx.reply(
+            `✏️ Событие #${event.id} обновлено.\n` +
+            `Новое время и описание:\n\n${newText}`,
+        );
+    })
+
     bot.on("callback_query", async (ctx) => {
         const cq = ctx.callbackQuery;
         if (!("data" in cq) || typeof cq.data !== "string") {
@@ -218,9 +315,14 @@ function scheduleEventNotification(bot: Telegraf, eventId: number): void {
     const delay = event.fireAt.getTime() - Date.now();
     if (delay <= 0) return;
 
-    setTimeout(async () => {
+    if (event.notificationTimeout) {
+        clearTimeout(event.notificationTimeout);
+    }
+
+    const timeout = setTimeout(async () => {
         const current = getEventById(eventId);
         if (!current) return;
+
         const text = `🔔 Наступило время события!\n\n${formatEventForMessage(event)}`;
 
         try {
@@ -247,4 +349,6 @@ function scheduleEventNotification(bot: Telegraf, eventId: number): void {
             }
         }
     }, delay);
+
+    event.notificationTimeout = timeout
 }

@@ -14,4 +14,5 @@ export type EventItem = {
     fireAt: Date;
     invites: EventInvite[];
     creatorMessageId?: number;
+    notificationTimeout?: NodeJS.Timeout;
 }
