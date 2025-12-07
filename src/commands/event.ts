@@ -279,6 +279,10 @@ export function registerEventCommand(bot: Telegraf) {
         for (const invite of event.invites) {
             if (!invite.userId) continue;
 
+            if (ctx.from && invite.userId === ctx.from?.id) {
+                continue;
+            }
+
             try {
                 await bot.telegram.sendMessage(
                     invite.userId,
@@ -306,13 +310,88 @@ export function registerEventCommand(bot: Telegraf) {
         }
 
         const data = cq.data;
-        if (!data.startsWith("event_rsvp:")) {
-            return ctx.answerCbQuery();
-        }
 
         const [, idStr, statusStr] = data.split(":");
         const eventId = Number(idStr);
+        const event = getEventById(eventId);
+        if (!event) {
+            await ctx.answerCbQuery("Событие не найдено");
+            return;
+        }
+        const text = formatEventForMessage(event);
+        const isCreator = ctx.from?.id === event.creatorId;
         const status = statusStr === "yes" ? "yes" : "no";
+
+        if (data.startsWith("event_view:")) {
+            await ctx.editMessageText(text, {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                isCreator
+                                    ? {
+                                        text: "✏️ Edit",
+                                        callback_data: `event_edit:${event.id}`,
+                                    }
+                                    : null,
+                                isCreator
+                                    ? {
+                                        text: "🗑 Delete",
+                                        callback_data: `event_delete:${event.id}`,
+                                    }
+                                    : null,
+                            ].filter(Boolean) as any[],
+                        ],
+                    }
+            });
+
+            await ctx.answerCbQuery()
+            return
+        }
+
+        if (data.startsWith("event_delete:")) {
+            if (!event) {
+                await ctx.answerCbQuery("Событие уже удалено");
+                return;
+            }
+
+            if (!ctx.from || ctx.from.id !== event.creatorId) {
+                await ctx.answerCbQuery("Удалять может только создатель");
+                return;
+            }
+
+            deleteEvent(eventId);
+
+            await ctx.editMessageText(
+                `❌ Событие #${eventId} "${event.title}" удалено.`,
+            );
+            await ctx.answerCbQuery("Событие удалено");
+            return;
+        }
+
+        if (data.startsWith("event_edit:")) {
+            if (!ctx.from || ctx.from.id !== event.creatorId) {
+                await ctx.answerCbQuery("Редактировать может только создатель");
+                return;
+            }
+
+            await ctx.answerCbQuery();
+            await ctx.reply(
+                "✏️ Чтобы отредактировать это событие, напиши команду:\n" +
+                "`/edit " +
+                eventId +
+                " 15m новый текст`\n" +
+                "или\n" +
+                "`/edit " +
+                eventId +
+                " 2025-12-10 19:30 новый текст`",
+                { parse_mode: "Markdown" },
+            );
+            return;
+        }
+
+        if (!data.startsWith("event_rsvp:")) {
+            return ctx.answerCbQuery();
+        }
 
         const fromId = ctx.from?.id
         const fromUsername = ctx.from?.username;
