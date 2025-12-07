@@ -6,6 +6,7 @@ import {handleRemindWizardInput, registerRemindCommand} from "./commands/remind"
 import { registerHelpCommand } from "./commands/help";
 import {handleEventWizardInput, registerEventCommand} from "./commands/event";
 import { handleList, registerListCommand } from "./commands/list";
+import {registerCallbackQueryHandler} from "./handlers/callBackQuery";
 
 type PendingAction = | {type: "remind"} | {type: "event"}
 
@@ -65,6 +66,8 @@ registerHelpCommand(bot)
 registerRemindCommand(bot)
 registerEventCommand(bot)
 registerListCommand(bot)
+registerListCommand(bot)
+registerCallbackQueryHandler(bot)
 
 bot.on("text", async (ctx, next) => {
     const text = ctx.message?.text || "";

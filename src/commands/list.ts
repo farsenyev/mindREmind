@@ -17,8 +17,6 @@ export async function handleList(ctx: Context) {
     const events = getEventsForUsers(userId, username).filter((e) => e.fireAt.getTime() > now);
     const reminders = getRemindersForChat(chatId).filter((r) => r.fireAt.getTime() > now);
 
-    let parts: string[] = []
-
     await ctx.reply(
         `📋 Активные объекты:\n` +
         `• События: ${events.length}\n` +
@@ -63,19 +61,12 @@ export async function handleList(ctx: Context) {
                     [
                         {
                             text: "🔍 Открыть",
-                            callback_data: `event_view:${reminder.id}`,
+                            callback_data: `rem_view:${reminder.id}`,
                         },
                     ],
                 ],
             },
         })
-    }
-
-    if (events.length === 0) {
-        parts.push("Еще нет созданных событий")
-    }
-    if (reminders.length === 0) {
-        parts.push("Еще нет созданных напоминаний")
     }
 }
 
